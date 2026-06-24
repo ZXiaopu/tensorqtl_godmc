@@ -127,9 +127,9 @@ def calculate_association(genotype_df, phenotype_s, covariates_df=None,
     return df
 
 
-def map_nominal(genotype_df, variant_df, phenotype_df, phenotype_pos_df, prefix,
+def map_nominal(mapping_df, genotype_df, variant_df, phenotype_df, phenotype_pos_df, prefix,
                 covariates_df=None, paired_covariate_df=None, maf_threshold=0, interaction_df=None, maf_threshold_interaction=0.05,
-                group_s=None, window=1000000, run_eigenmt=False, logp=False,
+                group_s=None, window=2000000, run_eigenmt=False, logp=False,
                 output_dir='.', write_top=True, write_stats=True, logger=None, verbose=True):
     """
     cis-QTL mapping: nominal associations for all variant-phenotype pairs
@@ -250,6 +250,11 @@ def map_nominal(genotype_df, variant_df, phenotype_df, phenotype_pos_df, prefix,
             chr_res['b_gi_se'] = np.empty([n, ni], dtype=np.float32)
 
         start = 0
+
+        ## filter certain SNPs rather than run all SNPs in the window
+        filtered_mapping = mapping_df[mapping_df['CpG'].isin(phenotype_df.index)]
+        valid_snps_dict = mapping_df.groupby('CpG')['SNP'].apply(set).to_dict()
+
         if group_s is None:
             for k, (phenotype, genotypes, genotype_range, phenotype_id) in enumerate(igc.generate_data(chrom=chrom, verbose=verbose), k+1):
                 # copy genotypes to GPU
@@ -260,6 +265,15 @@ def map_nominal(genotype_df, variant_df, phenotype_df, phenotype_pos_df, prefix,
 
                 variant_ids = variant_df.index[genotype_range[0]:genotype_range[-1]+1]
                 start_distance = np.int32(variant_df['pos'].values[genotype_range[0]:genotype_range[-1]+1] - igc.phenotype_start[phenotype_id])
+                
+                # filter SNPs
+                filtered_snps = valid_snps_dict.get(phenotype_id, set())
+                keep_mask = variant_ids.isin(filtered_snps)
+                variant_ids = variant_ids[keep_mask]
+                start_distance = start_distance[keep_mask]
+                mask_t_tmp = torch.tensor(keep_mask, dtype=torch.bool, device=device)
+                genotypes_t = genotypes_t[mask_t_tmp, :]
+
                 if 'pos' not in phenotype_pos_df:
                     end_distance = np.int32(variant_df['pos'].values[genotype_range[0]:genotype_range[-1]+1] - igc.phenotype_end[phenotype_id])
 

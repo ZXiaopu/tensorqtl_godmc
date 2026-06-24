@@ -287,7 +287,28 @@ def main():
             summary_df, res = susie.map_loci(locus_df, genotype_df, variant_df, phenotype_df, covariates_df,
                                              maf_threshold=maf_threshold, max_iter=500, window=args.window)
         else:
-            raise NotImplementedError()
+            # raise NotImplementedError()
+            # TODO: benchmark loading each window on the fly vs chunks;
+            summary_df = []
+            res = {}
+            # replace ID with unique locus ID, copy phenotypes
+            num_loci = defaultdict(int)
+            locus_ix = []
+            for phenotype_id in locus_df['phenotype_id']:
+                num_loci[phenotype_id] += 1
+                locus_ix.append(num_loci[phenotype_id])
+            locus_df['locus'] = locus_ix
+            locus_df['locus_id'] = locus_df['phenotype_id'] + '_' + locus_df['locus'].astype(str)
+            phenotype_df = phenotype_df.loc[locus_df['phenotype_id']].copy()
+            phenotype_df.index = locus_df['locus_id']
+            pos_df = locus_df.set_index('locus_id')[['chr', 'pos']]  # TODO: sort?
+            for gt_df, var_df, p_df, p_pos_df, _ in genotypeio.generate_paired_chunks(pgr, phenotype_df, pos_df, args.chunk_size,
+                                                                                      dosages=args.dosages, verbose=True):
+                chunk_summary_df, chunk_res = susie.map_loci(p_pos_df.reset_index(), gt_df, var_df, p_df, covariates_df,
+                                                             maf_threshold=maf_threshold, max_iter=500, window=args.window)
+                summary_df.append(chunk_summary_df)
+                res |= chunk_res
+            summary_df = pd.concat(summary_df).reset_index(drop=True)
 
         summary_df.to_parquet(os.path.join(args.output_dir, f'{args.prefix}.SuSiE_summary.parquet'))
         with open(os.path.join(args.output_dir, f'{args.prefix}.SuSiE.pickle'), 'wb') as f:
