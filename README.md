@@ -1,11 +1,14 @@
 ## Updates
 This repository is modified for GoDMC vmeQTL project. Specifically, GoDMC vmeQTL run gene-environment interaction analysis on candidate associations while tensorQTL run interactions with SNPs in a certain cis-window.
 
-I modified
+Modifications
 1/ The cis-window to 2Mbp (default is 1Mbp)
+
 2/ Interaction can be run on selected SNPs (need to have an additional candidate file)
 
-The original tensorQTL repository can be found here https://github.com/broadinstitute/tensorqtl/tree/master
+3/ No bugs reported when running trans interaction analysis with "covariates_df=None"
+
+The original tensorQTL repository can be found here https://github.com/broadinstitute/tensorqtl/
 
 ## tensorQTL
 
