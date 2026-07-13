@@ -181,7 +181,7 @@ def map_trans(genotype_df, phenotype_df, covariates_df=None, interaction_s=None,
 
 
     else:  # interaction model
-        dof = n_samples - 4 - covariates_df.shape[1]
+        dof = n_samples - 4 # changed made here to remove cov
         interaction_t = torch.tensor(interaction_s.values.reshape(1,-1), dtype=torch.float32).to(device)
         mask_s = pd.Series(True, index=interaction_s.index)
         mask_s[interaction_s.sort_values(kind='mergesort').index[:interaction_s.shape[0]//2]] = False
@@ -194,9 +194,9 @@ def map_trans(genotype_df, phenotype_df, covariates_df=None, interaction_s=None,
             nps = phenotypes_t.shape[0]
             i0_t = interaction_t - interaction_t.mean()
             p0_t = phenotypes_t - phenotypes_t.mean(1, keepdim=True)
-            p0_t = residualizer.transform(p0_t, center=False)
-            i0_t = residualizer.transform(i0_t, center=False)
-
+            #p0_t = residualizer.transform(p0_t, center=False)
+            #i0_t = residualizer.transform(i0_t, center=False) made changes here
+            
             tstat_g_list = []
             tstat_i_list = []
             tstat_gi_list = []
@@ -219,14 +219,14 @@ def map_trans(genotype_df, phenotype_df, covariates_df=None, interaction_s=None,
                     gi_t = genotypes_t * interaction_t
                     gi0_t = gi_t - gi_t.mean(1, keepdim=True)
                     # residualize rows
-                    g0_t = residualizer.transform(g0_t, center=False)
-                    gi0_t = residualizer.transform(gi0_t, center=False)
+                   # g0_t = residualizer.transform(g0_t, center=False)
+                   # gi0_t = residualizer.transform(gi0_t, center=False)
 
                     # regression
                     X_t = torch.stack([g0_t, i0_t.repeat(ng, 1), gi0_t], 2)  # ng x ns x 3
                     Xinv = torch.matmul(torch.transpose(X_t, 1, 2), X_t).inverse() # ng x 3 x 3
                     b_t = torch.matmul(torch.matmul(Xinv, torch.transpose(X_t, 1, 2)), p0_t.t())  # ng x 3 x np
-                    dof = residualizer.dof - 2
+                   # dof = residualizer.dof - 2
 
                     rss_t = (torch.matmul(X_t, b_t) - p0_t.t()).pow(2).sum(1)  # ng x np
                     b_se_t = torch.sqrt(Xinv[:, torch.eye(3, dtype=torch.uint8).bool()].unsqueeze(-1).repeat([1,1,nps]) * rss_t.unsqueeze(1).repeat([1,3,1]) / dof)
