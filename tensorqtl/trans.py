@@ -185,7 +185,7 @@ def map_trans(genotype_df, phenotype_df, covariates_df=None, interaction_s=None,
         interaction_t = torch.tensor(interaction_s.values.reshape(1,-1), dtype=torch.float32).to(device)
         mask_s = pd.Series(True, index=interaction_s.index)
         mask_s[interaction_s.sort_values(kind='mergesort').index[:interaction_s.shape[0]//2]] = False
-        interaction_mask_t = torch.BoolTensor(mask_s).to(device)
+        interaction_mask_t = torch.BoolTensor(mask_s.values.copy()).to(device)
 
         ggt = genotypeio.GenotypeGeneratorTrans(genotype_df, batch_size=batch_size)
         start_time = time.time()
@@ -200,6 +200,12 @@ def map_trans(genotype_df, phenotype_df, covariates_df=None, interaction_s=None,
             tstat_g_list = []
             tstat_i_list = []
             tstat_gi_list = []
+            b_g_list = []
+            b_i_list = []
+            b_gi_list = []
+            se_g_list = []
+            se_i_list = []
+            se_gi_list = []
             af_list = []
             ix0 = []
             ix1 = []
@@ -231,6 +237,8 @@ def map_trans(genotype_df, phenotype_df, covariates_df=None, interaction_s=None,
                     rss_t = (torch.matmul(X_t, b_t) - p0_t.t()).pow(2).sum(1)  # ng x np
                     b_se_t = torch.sqrt(Xinv[:, torch.eye(3, dtype=torch.uint8).bool()].unsqueeze(-1).repeat([1,1,nps]) * rss_t.unsqueeze(1).repeat([1,3,1]) / dof)
                     tstat_t = (b_t.double() / b_se_t.double()).float()  # (ng x 3 x np)
+                    
+                    # add more parameters as output
                     tstat_g_t =  tstat_t[:,0,:]  # genotypes x phenotypes
                     tstat_i_t =  tstat_t[:,1,:]
                     tstat_gi_t = tstat_t[:,2,:]
@@ -238,11 +246,20 @@ def map_trans(genotype_df, phenotype_df, covariates_df=None, interaction_s=None,
                     tstat_g_t = tstat_g_t[m]
                     tstat_i_t = tstat_i_t[m]
                     tstat_gi_t = tstat_gi_t[m]
+
+                    b_g_t = b_t[:,0,:][m]
+                    b_i_t = b_t[:,1,:][m]
+                    b_gi_t = b_t[:,2,:][m]
+                    
+                    se_g_t = b_se_t[:,0,:][m]
+                    se_i_t = b_se_t[:,1,:][m]
+                    se_gi_t = b_se_t[:,2,:][m]
+                    
                     ix = m.nonzero(as_tuple=False)  # indexes: [genotype, phenotype]
                     af_t =  af_t[ix[:,0]]
 
-                    res = [tstat_g_t, tstat_i_t, tstat_gi_t, af_t, ix]
-                    tstat_g, tstat_i, tstat_gi, af, ix = [i.cpu().numpy() for i in res]
+                    res = [tstat_g_t, tstat_i_t, tstat_gi_t, b_g_t, b_i_t, b_gi_t, se_g_t, se_i_t, se_gi_t, af_t, ix]
+                    tstat_g, tstat_i, tstat_gi, b_g, b_i, b_gi, se_g, se_i, se_gi, af, ix = [i.cpu().numpy() for i in res]
                     mask = mask_t.cpu().numpy()
                     # convert sparse indexes
                     if len(ix)>0:
@@ -250,6 +267,12 @@ def map_trans(genotype_df, phenotype_df, covariates_df=None, interaction_s=None,
                         tstat_g_list.append(tstat_g)
                         tstat_i_list.append(tstat_i)
                         tstat_gi_list.append(tstat_gi)
+                        b_g_list.append(b_g)
+                        b_i_list.append(b_i)
+                        b_gi_list.append(b_gi)
+                        se_g_list.append(se_g)
+                        se_i_list.append(se_i)
+                        se_gi_list.append(se_gi)
                         af_list.append(af)
                         ix0.extend(variant_ids[ix[:,0]].tolist())
                         ix1.extend(phenotype_df.index[ix[:,1]].tolist())
@@ -260,11 +283,17 @@ def map_trans(genotype_df, phenotype_df, covariates_df=None, interaction_s=None,
             pval_g =  get_t_pval(np.concatenate(tstat_g_list), dof, log=logp)
             pval_i =  get_t_pval(np.concatenate(tstat_i_list), dof, log=logp)
             pval_gi = get_t_pval(np.concatenate(tstat_gi_list), dof, log=logp)
+            b_g = np.concatenate(b_g_list)
+            b_i = np.concatenate(b_i_list)
+            b_gi = np.concatenate(b_gi_list)
+            se_g = np.concatenate(se_g_list)
+            se_i = np.concatenate(se_i_list)
+            se_gi = np.concatenate(se_gi_list)
             af = np.concatenate(af_list)
 
-            pval_df = pd.DataFrame(np.c_[ix0, ix1, pval_g, pval_i, pval_gi, af],
-                                   columns=['variant_id', 'phenotype_id', 'pval_g', 'pval_i', 'pval_gi', 'af']
-                                   ).astype({'pval_g':np.float64, 'pval_i':np.float64, 'pval_gi':np.float64, 'af':np.float32})
+            pval_df = pd.DataFrame(np.c_[ix0, ix1, b_g, se_g, pval_g, b_i, se_i, pval_i, b_gi, se_gi, pval_gi, af],
+                                   columns=['variant_id', 'phenotype_id', 'b_g', 'se_g', 'pval_g', 'b_i', 'se_i', 'pval_i', 'b_gi', 'se_gi', 'pval_gi', 'af']
+                                   ).astype({'b_g':np.float64, 'se_g':np.float64, 'pval_g':np.float64, 'b_i':np.float64, 'se_i':np.float64, 'pval_i':np.float64, 'b_gi':np.float64, 'se_gi':np.float64, 'pval_gi':np.float64, 'af':np.float32})
             return pval_df
         else:  # dense output
             output_list = []
@@ -273,7 +302,7 @@ def map_trans(genotype_df, phenotype_df, covariates_df=None, interaction_s=None,
                 genotypes_t, mask_t = filter_maf_interaction(genotypes_t[:, genotype_ix_t],
                                                              interaction_mask_t=interaction_mask_t,
                                                              maf_threshold_interaction=maf_threshold)
-                res = calculate_interaction_nominal(genotypes_t, phenotypes_t, interaction_t, residualizer,
+                res = calculate_interaction_nominal(genotypes_t, phenotypes_t, interaction_t.t(), residualizer,
                                                     return_sparse=return_sparse)
                 # res: tstat, b, b_se, af, ma_samples, ma_count
                 res = [i.cpu().numpy() for i in res]
